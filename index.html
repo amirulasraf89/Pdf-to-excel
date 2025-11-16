@@ -52,24 +52,27 @@ convertBtn.onclick = async () => {
     text = text.replace(/\s+/g, " ");
 
     const rows = [
-        ["FIELD", "VALUE"],
-        ["NO. AKAUN", extractClean(/NO\. AKAUN:\s*([0-9]+)/i, text)],
-        ["KOD STESEN / DAERAH", extractClean(/KOD STESEN \/ DAERAH:\s*([0-9\/ ]+TNB [A-Z ]+)/i, text)],
-        ["TARIKH PEMERIKSAAN", extractClean(/TARIKH PEMERIKSAAN:\s*([0-9-]+)/i, text)],
-        ["TARIF", extractClean(/TARIF:\s*([A-Za-z0-9_\/ ]+)/i, text)],
-        ["JAM MULA", extractClean(/JAM MULA:\s*([0-9:]+)/i, text)],
-        ["NAMA PELANGGAN BERDAFTAR", extractClean(/NAMA PELANGGAN BERDAFTAR:\s*([A-Za-z ]+)/i, text)],
-        ["ALAMAT", extractClean(/ALAMAT:\s*([^N]+?)(?= NAMA PELANGGAN SEBENAR| CATATAN)/i, text)],
-        ["CATATAN", extractClean(/CATATAN:\s*([A-Za-z ]+)/i, text)],
-        ["NO. SIRI METER", extractClean(/NO\. SIRI METER\s*([A-Za-z0-9]+)/i, text)],
-        ["BUATAN / MODEL", extractClean(/BUATAN \/ MODEL\s*([A-Za-z0-9]+)/i, text)],
-        ["SAIZ METER", extractClean(/SAIZ METER\s*([0-9]+)/i, text)],
-        ["KONSTAN", extractClean(/KONSTAN\s*([0-9.]+)/i, text)],
-        ["Accumulative kWh", extractClean(/Accumulative kWh\s*([0-9]+)/i, text)],
-        ["CATATAN KEJANGGALAN", extractClean(/4\.0\) CATATAN KEJANGGALAN\s*(.*?)5\.0\)/i, text)],
-        ["TINDAKAN PEMBETULAN", extractClean(/TINDAKAN PEMBETULAN\s*(.*?)UJIAN KEJITUAN/i, text)],
-        ["PURATA RALAT", extractClean(/PURATA RALAT\s*=\s*([-A-Za-z0-9]+)/i, text)]
-    ];
+    ["FIELD", "VALUE"],
+    ["NO. AKAUN", extractClean(/NO\. AKAUN:\s*([0-9]+)/i, text)],
+    ["KOD STESEN / DAERAH", extractClean(/KOD STESEN \/ DAERAH:\s*([0-9\/ ]+TNB [A-Z ]+)/i, text)],
+    ["TARIKH PEMERIKSAAN", extractClean(/TARIKH PEMERIKSAAN:\s*([0-9-]+)/i, text)],
+    ["TARIF", extractClean(/TARIF:\s*([A-Za-z0-9_\/ ]+)/i, text)],
+    ["JAM MULA", extractClean(/JAM MULA:\s*([0-9:]+)/i, text)],
+    ["NAMA PELANGGAN BERDAFTAR", extractClean(/NAMA PELANGGAN BERDAFTAR:\s*([A-Za-z ]+)/i, text)],
+
+    // ⭐ FIXED ALAMAT ⭐
+    ["ALAMAT", extractClean(/ALAMAT:\s*(.*?)\s*NAMA PELANGGAN SEBENAR:/i, text)],
+
+    ["CATATAN", extractClean(/CATATAN:\s*([A-Za-z ]+)/i, text)],
+    ["NO. SIRI METER", extractClean(/NO\. SIRI METER\s*([A-Za-z0-9]+)/i, text)],
+    ["BUATAN / MODEL", extractClean(/BUATAN \/ MODEL\s*([A-Za-z0-9]+)/i, text)],
+    ["SAIZ METER", extractClean(/SAIZ METER\s*([0-9]+)/i, text)],
+    ["KONSTAN", extractClean(/KONSTAN\s*([0-9.]+)/i, text)],
+    ["Accumulative kWh", extractClean(/Accumulative kWh\s*([0-9]+)/i, text)],
+    ["CATATAN KEJANGGALAN", extractClean(/4\.0\) CATATAN KEJANGGALAN\s*(.*?)5\.0\)/i, text)],
+    ["TINDAKAN PEMBETULAN", extractClean(/TINDAKAN PEMBETULAN\s*(.*?)UJIAN KEJITUAN/i, text)],
+    ["PURATA RALAT", extractClean(/PURATA RALAT\s*=\s*([-A-Za-z0-9]+)/i, text)]
+];
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws["!cols"] = [{ wch: 32 }, { wch: 100 }];
