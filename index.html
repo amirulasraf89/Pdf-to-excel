@@ -1,216 +1,109 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>PDF / DOCX → Excel extractor</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    body { font-family: system-ui, -apple-system, Roboto, Arial, sans-serif; padding: 20px; max-width:900px; margin:auto; }
-    h1 { margin-bottom: 6px; }
-    .card { border: 1px solid #ddd; padding: 14px; border-radius: 8px; }
-    .controls { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
-    input[type=file] { padding:6px; }
-    button { padding:8px 12px; cursor:pointer; }
-    textarea { width:100%; height:200px; margin-top:12px; font-family:monospace; }
-    .small { font-size:0.9rem; color:#555; }
-    #progress { margin-top:8px; }
-  </style>
+<meta charset="utf-8" />
+<title>Split Words Into Excel Columns</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body { font-family: system-ui, Arial; padding: 20px; max-width: 900px; margin: auto; }
+  textarea { width:100%; height: 250px; margin-top: 10px; font-family: monospace; }
+  .card { border:1px solid #ccc; padding:15px; border-radius:8px; }
+  button { padding:8px 14px; margin-right:6px; }
+</style>
 </head>
 <body>
-  <h1>PDF / DOCX → Excel (browser)</h1>
-  <div class="card">
-    <div class="controls">
-      <input id="fileInput" type="file" accept=".pdf,.docx" />
-      <select id="splitMode" title="How to split extracted text into rows">
-        <option value="paragraph">Split by paragraphs</option>
-        <option value="line">Split by lines</option>
-        <option value="page">One row per PDF page (joined)</option>
-      </select>
-      <button id="convertBtn">Convert → Excel</button>
-      <button id="clearBtn">Clear</button>
-    </div>
 
-    <div id="progress" class="small">Choose a PDF or .docx file, then press Convert.</div>
+<h2>PDF / DOCX → Excel (Words → Columns)</h2>
 
-    <label class="small">Preview (editable):</label>
-    <textarea id="preview" placeholder="Extracted text will appear here..."></textarea>
+<div class="card">
+  <input id="fileInput" type="file" accept=".pdf,.docx">
+  <button id="convertBtn">Convert → Excel</button>
+  <button onclick="preview.value=''">Clear</button>
 
-    <div style="margin-top:10px" class="small">
-      Note: scanned PDFs (images) need OCR (e.g. Tesseract.js). This tool extracts selectable text only.
-    </div>
-  </div>
+  <div id="status" style="margin-top:10px;color:#555">Upload your file.</div>
 
-  <!-- Libraries from CDN -->
-  <!-- pdf.js -->
-  <script src="https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
-  <!-- mammoth.js for docx -->
-  <script src="https://unpkg.com/mammoth@1.4.21/dist/mammoth.browser.min.js"></script>
-  <!-- SheetJS -->
-  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <textarea id="preview" placeholder="Extracted text appears here..."></textarea>
+</div>
 
-  <script>
-    // Configure pdf.js worker
-    if (window['pdfjsLib']) {
-      // Use CDN worker from unpkg
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
+<!-- Libraries -->
+<script src="https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.worker.min.js";
+</script>
+
+<script src="https://unpkg.com/mammoth@1.4.21/dist/mammoth.browser.min.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
+const fileInput = document.getElementById("fileInput");
+const convertBtn = document.getElementById("convertBtn");
+const preview = document.getElementById("preview");
+const statusBox = document.getElementById("status");
+
+convertBtn.onclick = async () => {
+    const file = fileInput.files[0];
+    if (!file) return alert("Please select a file.");
+
+    statusBox.textContent = "Extracting text...";
+
+    let text = "";
+    if (file.name.toLowerCase().endsWith(".pdf")) {
+        text = await extractPDF(file);
+    } else if (file.name.toLowerCase().endsWith(".docx")) {
+        text = await extractDOCX(file);
+    } else {
+        return alert("Only PDF or DOCX allowed.");
     }
 
-    const fileInput = document.getElementById('fileInput');
-    const convertBtn = document.getElementById('convertBtn');
-    const preview = document.getElementById('preview');
-    const progress = document.getElementById('progress');
-    const splitMode = document.getElementById('splitMode');
-    const clearBtn = document.getElementById('clearBtn');
+    preview.value = text;
 
-    clearBtn.addEventListener('click', () => {
-      fileInput.value = '';
-      preview.value = '';
-      progress.textContent = 'Cleared.';
+    // Split line-by-line
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+
+    // Each line → columns (each word)
+    const rows = lines.map(line => {
+        return line
+            .trim()
+            .replace(/\s+/g, " ")
+            .split(" "); // split into words → becomes columns
     });
 
-    convertBtn.addEventListener('click', async () => {
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) {
-        alert('Please pick a PDF or DOCX file first.');
-        return;
-      }
+    // Convert to Excel sheet
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = Array(20).fill({ wch: 20 }); // width for 20 columns
 
-      preview.value = '';
-      progress.textContent = 'Starting extraction...';
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Words");
 
-      const ext = file.name.split('.').pop().toLowerCase();
-      try {
-        let text = '';
-        if (ext === 'pdf') {
-          text = await extractTextFromPDF(file);
-        } else if (ext === 'docx') {
-          text = await extractTextFromDocx(file);
-        } else {
-          alert('Unsupported file type. Please provide .pdf or .docx');
-          return;
-        }
+    const outName = file.name.replace(/\.[^/.]+$/, "") + "_columns.xlsx";
+    XLSX.writeFile(wb, outName);
 
-        if (!text || text.trim().length === 0) {
-          progress.textContent = 'No extractable text found.';
-          preview.value = '';
-          return;
-        }
+    statusBox.textContent = "Done. Excel downloaded.";
+};
 
-        // Show preview (editable)
-        preview.value = text;
-        progress.textContent = 'Extraction finished. Preparing Excel...';
+// PDF extraction
+async function extractPDF(file) {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let finalText = "";
 
-        // Split preview text into rows according to mode
-        const mode = splitMode.value;
-        let rows = [];
-        if (mode === 'paragraph') {
-          // paragraphs: split by double newline sequences (Windows/Unix variants)
-          rows = text.split(/\r?\n\s*\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
-        } else if (mode === 'line') {
-          rows = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
-        } else if (mode === 'page') {
-          // For PDFs we could join page texts with a separator; for docx, fallback to paragraph behavior
-          rows = text.split(/\f/) // attempt page break character if used
-                    .map(s => s.trim())
-                    .filter(s => s.length > 0);
-          if (rows.length === 0) {
-            rows = text.split(/\r?\n\s*\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
-          }
-        }
-
-        // Convert to sheet (single column A)
-        const aoa = rows.map(r => [r]); // each row is an array of columns
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-        // Optionally set column width for readability
-        ws['!cols'] = [{ wch: Math.max(20, Math.min(100, Math.floor(Math.max(...rows.map(r => r.length))/1.2)))}];
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Extracted');
-        const outName = file.name.replace(/\.[^.]+$/, '') + '-extracted.xlsx';
-
-        // Write file (triggers download)
-        XLSX.writeFile(wb, outName);
-
-        progress.textContent = 'Excel file downloaded: ' + outName;
-      } catch (err) {
-        console.error(err);
-        alert('Error during conversion: ' + (err && err.message ? err.message : err));
-        progress.textContent = 'Error: see console.';
-      }
-    });
-
-    // Extract text from a PDF File object using pdf.js
-    async function extractTextFromPDF(file) {
-      const arrayBuffer = await file.arrayBuffer();
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-      const pdf = await loadingTask.promise;
-      let fullText = '';
-      progress.textContent = `PDF loaded — ${pdf.numPages} page(s). Extracting...`;
-
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        progress.textContent = `Extracting page ${pageNum}/${pdf.numPages}...`;
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        // textContent.items is an array of text runs; join them with spaces
-        const pageText = textContent.items.map(i => i.str).join(' ');
-        // append a page break marker so 'page' splitMode can use it
-        fullText += pageText + (pageNum < pdf.numPages ? '\n\f\n' : '');
-        // optional small delay to keep UI responsive for big files
-        await new Promise(r => setTimeout(r, 0));
-      }
-      return fullText.trim();
+    for (let pg = 1; pg <= pdf.numPages; pg++) {
+        const page = await pdf.getPage(pg);
+        const content = await page.getTextContent();
+        const text = content.items.map(i => i.str).join(" ");
+        finalText += text + "\n";
     }
+    return finalText.trim();
+}
 
-    // Extract text from a docx File object using mammoth.js
-    async function extractTextFromDocx(file) {
-      progress.textContent = 'Reading .docx...';
-      // mammoth accepts arrayBuffer
-      const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
-      // result.value is HTML; convert to text preserving paragraphs
-      const html = result.value;
-      // Create temporary DOM to extract text while preserving line breaks between paragraphs
-      const tmp = document.createElement('div');
-      tmp.innerHTML = html;
-      // convert block-level elements into newlines
-      const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT, null, false);
-      let textPieces = [];
-      let node;
-      while (node = walker.nextNode()) {
-        // skip whitespace-only nodes
-        if (node.nodeValue && node.nodeValue.trim()) {
-          // Determine if parent is a block tag to separate paragraphs
-          const parentTag = node.parentElement && node.parentElement.tagName ? node.parentElement.tagName.toLowerCase() : '';
-          textPieces.push({ text: node.nodeValue, block: ['p','h1','h2','h3','h4','h5','h6','li','div','table','tr','td','blockquote'].includes(parentTag) });
-        }
-      }
-      // Build text with paragraphs separated
-      let out = '';
-      let pending = '';
-      textPieces.forEach((t, idx) => {
-        if (t.block) {
-          if (pending.trim()) {
-            out += pending.trim() + '\n\n';
-          }
-          out += t.text.trim() + '\n\n';
-          pending = '';
-        } else {
-          pending += ' ' + t.text;
-        }
-      });
-      if (pending.trim()) out += pending.trim();
-      return out.trim();
-    }
+// DOCX extraction
+async function extractDOCX(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value.trim();
+}
+</script>
 
-    // Optional: add drag-and-drop support
-    document.body.addEventListener('dragover', e => { e.preventDefault(); });
-    document.body.addEventListener('drop', e => {
-      e.preventDefault();
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        fileInput.files = e.dataTransfer.files;
-        progress.textContent = 'File dropped: ' + e.dataTransfer.files[0].name;
-      }
-    });
-  </script>
 </body>
 </html>
