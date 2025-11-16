@@ -2,107 +2,99 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Split Words Into Excel Columns</title>
+<title>MPM Accurate Extract → Excel</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-  body { font-family: system-ui, Arial; padding: 20px; max-width: 900px; margin: auto; }
-  textarea { width:100%; height: 250px; margin-top: 10px; font-family: monospace; }
-  .card { border:1px solid #ccc; padding:15px; border-radius:8px; }
-  button { padding:8px 14px; margin-right:6px; }
+    body { font-family: system-ui, Arial; padding: 20px; max-width: 900px; margin: auto; }
+    textarea { width: 100%; height: 260px; font-family: monospace; margin-top: 12px; white-space: pre; }
+    .card { border: 1px solid #ccc; padding: 16px; border-radius: 8px; }
+    button { padding: 8px 14px; margin-right: 6px; cursor: pointer; }
 </style>
 </head>
 <body>
 
-<h2>PDF / DOCX → Excel (Words → Columns)</h2>
+<h2>MPM Structured Field Extractor</h2>
 
 <div class="card">
-  <input id="fileInput" type="file" accept=".pdf,.docx">
-  <button id="convertBtn">Convert → Excel</button>
-  <button onclick="preview.value=''">Clear</button>
+    <input id="fileInput" type="file" accept=".pdf">
+    <button id="convertBtn">Extract → Excel</button>
+    <button onclick="preview.value=''">Clear</button>
 
-  <div id="status" style="margin-top:10px;color:#555">Upload your file.</div>
-
-  <textarea id="preview" placeholder="Extracted text appears here..."></textarea>
+    <div id="status" style="margin-top: 8px; color: #666;">Upload your file.</div>
+    <textarea id="preview" placeholder="Extracted raw text will appear here..."></textarea>
 </div>
 
 <!-- Libraries -->
 <script src="https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.worker.min.js";
+    "https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.worker.min.js";
 </script>
 
-<script src="https://unpkg.com/mammoth@1.4.21/dist/mammoth.browser.min.js"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script>
-const fileInput = document.getElementById("fileInput");
-const convertBtn = document.getElementById("convertBtn");
-const preview = document.getElementById("preview");
-const statusBox = document.getElementById("status");
 
-convertBtn.onclick = async () => {
-    const file = fileInput.files[0];
-    if (!file) return alert("Please select a file.");
-
-    statusBox.textContent = "Extracting text...";
-
-    let text = "";
-    if (file.name.toLowerCase().endsWith(".pdf")) {
-        text = await extractPDF(file);
-    } else if (file.name.toLowerCase().endsWith(".docx")) {
-        text = await extractDOCX(file);
-    } else {
-        return alert("Only PDF or DOCX allowed.");
-    }
-
-    preview.value = text;
-
-    // Split line-by-line
-    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-
-    // Each line → columns (each word)
-    const rows = lines.map(line => {
-        return line
-            .trim()
-            .replace(/\s+/g, " ")
-            .split(" "); // split into words → becomes columns
-    });
-
-    // Convert to Excel sheet
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = Array(20).fill({ wch: 20 }); // width for 20 columns
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Words");
-
-    const outName = file.name.replace(/\.[^/.]+$/, "") + "_columns.xlsx";
-    XLSX.writeFile(wb, outName);
-
-    statusBox.textContent = "Done. Excel downloaded.";
+const extractClean = (pattern, text) => {
+    const s = text.match(pattern);
+    return s ? s[1].replace(/\s+/g, " ").trim() : "";
 };
 
-// PDF extraction
+convertBtn.onclick = async () => {
+
+    const file = fileInput.files[0];
+    if (!file) return alert("Please select PDF");
+
+    let text = await extractPDF(file);
+    preview.value = text;
+
+    // Normalize line breaks
+    text = text.replace(/\s+/g, " ");
+
+    const rows = [
+        ["FIELD", "VALUE"],
+        ["NO. AKAUN", extractClean(/NO\. AKAUN:\s*([0-9]+)/i, text)],
+        ["KOD STESEN / DAERAH", extractClean(/KOD STESEN \/ DAERAH:\s*([0-9\/ ]+TNB [A-Z ]+)/i, text)],
+        ["TARIKH PEMERIKSAAN", extractClean(/TARIKH PEMERIKSAAN:\s*([0-9-]+)/i, text)],
+        ["TARIF", extractClean(/TARIF:\s*([A-Za-z0-9_\/ ]+)/i, text)],
+        ["JAM MULA", extractClean(/JAM MULA:\s*([0-9:]+)/i, text)],
+        ["NAMA PELANGGAN BERDAFTAR", extractClean(/NAMA PELANGGAN BERDAFTAR:\s*([A-Za-z ]+)/i, text)],
+        ["ALAMAT", extractClean(/ALAMAT:\s*([^N]+?)(?= NAMA PELANGGAN SEBENAR| CATATAN)/i, text)],
+        ["CATATAN", extractClean(/CATATAN:\s*([A-Za-z ]+)/i, text)],
+        ["NO. SIRI METER", extractClean(/NO\. SIRI METER\s*([A-Za-z0-9]+)/i, text)],
+        ["BUATAN / MODEL", extractClean(/BUATAN \/ MODEL\s*([A-Za-z0-9]+)/i, text)],
+        ["SAIZ METER", extractClean(/SAIZ METER\s*([0-9]+)/i, text)],
+        ["KONSTAN", extractClean(/KONSTAN\s*([0-9.]+)/i, text)],
+        ["Accumulative kWh", extractClean(/Accumulative kWh\s*([0-9]+)/i, text)],
+        ["CATATAN KEJANGGALAN", extractClean(/4\.0\) CATATAN KEJANGGALAN\s*(.*?)5\.0\)/i, text)],
+        ["TINDAKAN PEMBETULAN", extractClean(/TINDAKAN PEMBETULAN\s*(.*?)UJIAN KEJITUAN/i, text)],
+        ["PURATA RALAT", extractClean(/PURATA RALAT\s*=\s*([-A-Za-z0-9]+)/i, text)]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [{ wch: 32 }, { wch: 100 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Extracted");
+
+    XLSX.writeFile(wb, "Extracted_Fields.xlsx");
+
+    statusBox.textContent = "Done!";
+};
+
 async function extractPDF(file) {
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    let finalText = "";
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    let out = "";
 
-    for (let pg = 1; pg <= pdf.numPages; pg++) {
-        const page = await pdf.getPage(pg);
+    for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
         const content = await page.getTextContent();
-        const text = content.items.map(i => i.str).join(" ");
-        finalText += text + "\n";
+        out += content.items.map(i => i.str).join(" ") + " ";
     }
-    return finalText.trim();
+    return out;
 }
 
-// DOCX extraction
-async function extractDOCX(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value.trim();
-}
 </script>
 
 </body>
